@@ -1,0 +1,16 @@
+*,
+*:after,
+*:before {
+    margin     : 0;
+    padding    : 0;
+    box-sizing : border-box;
+}
+
+html {
+    background : #434343;
+}
+
+p {
+    color     : #fff;
+    font-size : 43px;
+}

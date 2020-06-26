@@ -1,89 +1,132 @@
-var gulp = require('gulp');
+const gulp = require('gulp');
+const babel = require('gulp-babel');
+const postcss = require('gulp-postcss');
+const replace = require('gulp-replace');
+const htmlmin = require('gulp-htmlmin');
+const terser = require('gulp-terser');
+const sync = require('browser-sync');
 
-var paths = {
-  source: {
-    style: 'source/sass/style.scss',
-    html: 'source/*.html',
-    js: '',
-    img: ['source/**/*.{jpg,png,svg}', '!source/**/icon-*.svg', '!source/assets/**/*.*'],
-    svgicon: 'source/**/icon-*.svg',
-    assets: 'source/assets/**/*.*'
-  },
-  build: {
-    style: 'build/css',
-    root: 'build',
-    img: 'build/img',
-    svgicon: 'build/img'
-  },
-  watch: {
-    style: 'source/**/*.scss',
-    html: 'source/**/*.html',
-    img: ['source/**/*.{jpg,png,svg}', '!source/**/icon-*.svg', '!source/assets/**/*.*'],
-    svgicon: 'source/**/icon-*.svg',
-  }
+const PATH = {
+    source: {
+        root: 'src',
+        html: 'src/*.html',
+        styles: 'src/styles/index.css',
+        js: 'src/scripts/index.js',
+        images: 'src/images/**/*',
+        fonts: 'src/fonts/**/*',
+    },
+    build: {
+        root: 'dist',
+        html: 'dist/*.html',
+        css: 'dist/css/',
+        js: 'dist/js/'
+    },
+    watch: {
+        style: 'src/**/*.scss',
+    }
 };
 
-function lazyRequireTask(taskName, path, options) {
-  options = options || {};
-  options.taskName = taskName;
-  gulp.task(taskName, function (callback) {
-    let task = require(path).call(this, options);
+// HTML
+const html = () => {
+    return gulp.src(PATH.source.html)
+        .pipe(htmlmin({
+            removeComments: true,
+            collapseWhitespace: true,
+        }))
+        .pipe(gulp.dest(PATH.build.root))
+        .pipe(sync.stream());
+};
+exports.html = html;
 
-    return task(callback);
-  });
-}
+// Styles
+const styles = () => {
+    return gulp.src(PATH.source.styles)
+        .pipe(postcss([
+            require('postcss-import'),
+            require('autoprefixer'),
+            require('postcss-csso'),
+        ]))
+        .pipe(replace(/\.\.\//g, ''))
+        .pipe(gulp.dest(PATH.build.root))
+        .pipe(sync.stream());
+};
+exports.styles = styles;
 
-lazyRequireTask('styles', './tasks/styles', {
-  src: 'source/sass/style.scss',
-  build: 'build/css'
-});
+// Scripts
+const scripts = () => {
+    return gulp.src(PATH.source.js)
+        .pipe(babel({
+            presets: ['@babel/preset-env']
+        }))
+        .pipe(terser())
+        .pipe(gulp.dest(PATH.build.root))
+        .pipe(sync.stream());
+};
+exports.scripts = scripts;
 
-lazyRequireTask('html', './tasks/html', {
-  src: paths.source.html,
-  build: paths.build.root
-});
+// Copy
+const copy = () => {
+    return gulp.src([
+            PATH.source.fonts,
+            PATH.source.images
+        ], {
+            base: PATH.source.root
+        })
+        .pipe(gulp.dest(PATH.build.root))
+        .pipe(sync.stream({
+            once: true
+        }));
+};
+exports.copy = copy;
 
-lazyRequireTask('images', './tasks/images', {
-  src: paths.source.img,
-  build: paths.build.img
-});
+// Paths
+const paths = () => {
+    return gulp.src(PATH.build.html)
+        .pipe(replace(
+            /(<link rel="stylesheet" href=")styles\/(index.css">)/, '$1$2'
+        ))
+        .pipe(replace(
+            /(<script src=")scripts\/(index.js">)/, '$1$2'
+        ))
+        .pipe(gulp.dest(PATH.build.root));
+};
+exports.paths = paths;
 
-lazyRequireTask('sprites', './tasks/sprites', {
-  src: paths.source.svgicon,
-  build: paths.build.img
-});
+// Server
+const server = () => {
+    sync.init({
+        ui: false,
+        notify: true,
+        server: {
+            baseDir: PATH.build.root
+        }
+    });
+};
+exports.server = server;
 
-lazyRequireTask('assets', './tasks/assets', {
-  src: paths.source.assets,
-  build: paths.build.root
-});
+// Watch
+const watch = () => {
+    gulp.watch('src/*.html', gulp.series(html, paths));
+    gulp.watch('src/styles/**/*.css', gulp.series(styles));
+    gulp.watch('src/scripts/**/*.js', gulp.series(scripts));
+    gulp.watch([
+        'src/fonts/**/*',
+        'src/images/**/*',
+    ], gulp.series(copy));
+};
+exports.watch = watch;
 
-lazyRequireTask('serve', './tasks/serve', {
-  build: paths.build.root
-});
-
-lazyRequireTask('clean', './tasks/clean', {
-  build: paths.build.root
-});
-
-gulp.task('watch', function () {
-  gulp.watch(paths.watch.style, gulp.series('styles'));
-  gulp.watch(paths.watch.html, gulp.series('html'));
-  gulp.watch(paths.watch.img, gulp.series('images'));
-  gulp.watch(paths.watch.svgicon, gulp.series('sprites'));
-});
-
-gulp.task('build',
-  gulp.series('clean',
-    gulp.parallel('styles', 'html', 'images', 'sprites', 'assets'))
-);
-
-gulp.task('default',
-  gulp.series('build',
-    gulp.parallel('serve'))
-);
-
-gulp.task('dev', 
-  gulp.series('build', 
-  gulp.parallel('watch', 'serve'))
+// Default
+exports.default = gulp.series(
+    gulp.parallel(
+        html,
+        styles,
+        scripts,
+        copy,
+    ),
+    paths,
+    gulp.parallel(
+        watch,
+        server,
+    ),
 );
